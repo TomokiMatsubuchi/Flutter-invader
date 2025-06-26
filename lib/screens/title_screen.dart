@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
 import '../painters/pixel_painters.dart';
 import '../widgets/pixel_button.dart';
-import '../widgets/pixel_button.dart';
+import '../services/sound_service.dart';
 import 'game_screen.dart';
 
 class TitleScreen extends StatefulWidget {
@@ -83,6 +82,7 @@ class _TitleScreenState extends State<TitleScreen> with TickerProviderStateMixin
   }
 
   void _startGame() {
+    SoundService.playButtonTapSound();
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => const GameScreen(),
@@ -246,7 +246,23 @@ class _TitleScreenState extends State<TitleScreen> with TickerProviderStateMixin
                     },
                   ),
                   
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 15),
+                  
+                  // サウンド設定ボタン
+                  PixelButton(
+                    text: SoundService.soundEnabled ? '🔊 ON' : '🔇 OFF',
+                    onPressed: () {
+                      SoundService.playButtonTapSound();
+                      setState(() {
+                        SoundService.toggleSound();
+                      });
+                    },
+                    backgroundColor: SoundService.soundEnabled ? Colors.green : Colors.grey,
+                    width: 120,
+                    height: 35,
+                  ),
+                  
+                  const SizedBox(height: 15),
                   
                   // 遊び方の説明
                   Container(

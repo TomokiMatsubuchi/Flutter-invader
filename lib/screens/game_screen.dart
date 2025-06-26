@@ -3,11 +3,15 @@ import 'dart:async';
 import '../models/game_state.dart';
 import '../models/bullet.dart';
 import '../models/invader.dart';
+import '../models/invader_bullet.dart';
 import '../models/player.dart';
 import '../services/game_engine.dart';
+import '../services/high_score_service.dart';
+import '../services/sound_service.dart';
 import '../utils/constants.dart';
 import '../widgets/pause_button.dart';
 import '../widgets/pause_menu.dart';
+import '../widgets/hp_bar.dart';
 import 'title_screen.dart';
 
 class GameScreen extends StatefulWidget {
@@ -18,55 +22,96 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
-  late GameState _gameState;
+  GameState? _gameState;
 
   @override
   void initState() {
     super.initState();
-    _initializeGame();
+    _initializeGameAsync();
+  }
+  
+  void _initializeGameAsync() async {
+    await _initializeGame();
   }
 
-  void _initializeGame() {
-    _gameState = GameState.initial();
-    GameEngine.initializeInvaders(_gameState);
+  Future<void> _initializeGame() async {
+    final highScore = await HighScoreService.getHighScore();
+    final gameState = GameState.initial(highScore: highScore);
+    GameEngine.initializeInvaders(gameState);
     
-    _gameState.gameTimer = Timer.periodic(
+    gameState.gameTimer = Timer.periodic(
       Duration(milliseconds: GameConstants.gameLoopDuration), 
       _gameLoop,
     );
+    
+    setState(() {
+      _gameState = gameState;
+    });
+    
+    // ゲーム開始音
+    SoundService.playGameStartSound();
   }
 
   void _gameLoop(Timer timer) {
-    if (_gameState.isPaused || _gameState.isGameOver) return;
-    
-    setState(() {
-      GameEngine.updateBullets(_gameState);
-      final directionChanged = GameEngine.updateInvaders(_gameState);
+    try {
+      if (_gameState == null || _gameState!.isPaused || _gameState!.isGameOver) return;
       
-      final hitCount = GameEngine.checkCollisions(_gameState);
-      _gameState = _gameState.copyWith(
-        score: _gameState.score + (hitCount * GameConstants.scorePerInvader),
-        moveCounter: _gameState.moveCounter + 1,
-        moveRight: directionChanged ? !_gameState.moveRight : _gameState.moveRight,
-      );
-      
-      if (GameEngine.isGameOver(_gameState)) {
-        _gameState = _gameState.copyWith(status: GameStatus.gameOver);
-        timer.cancel();
-      }
-    });
+      setState(() {
+        final gameState = _gameState!;
+        GameEngine.updateBullets(gameState);
+        GameEngine.updateInvaderBullets(gameState);
+        GameEngine.generateInvaderBullet(gameState);
+        
+        final directionChanged = GameEngine.updateInvaders(gameState);
+        final hitCount = GameEngine.checkCollisions(gameState);
+        
+        // インベーダー撃破時のサウンド
+        if (hitCount > 0) {
+          SoundService.playHitSound();
+        }
+        
+        // プレイヤーの被弾チェック
+        int newLives = gameState.lives;
+        if (GameEngine.checkPlayerCollision(gameState)) {
+          SoundService.playPlayerHitSound();
+          newLives = gameState.lives - 1;
+        }
+        
+        _gameState = gameState.copyWith(
+          score: gameState.score + (hitCount * GameConstants.scorePerInvader),
+          lives: newLives,
+          moveCounter: gameState.moveCounter + 1,
+          moveRight: directionChanged ? !gameState.moveRight : gameState.moveRight,
+        );
+        
+        if (GameEngine.isGameOver(_gameState!)) {
+          _gameState = _gameState!.copyWith(status: GameStatus.gameOver);
+          _safelyDisposeTimer(timer);
+          SoundService.playGameOverSound();
+          _saveHighScoreIfNeeded();
+        }
+      });
+    } catch (e) {
+      // ゲームループでエラーが発生した場合の安全な処理
+      debugPrint('Game loop error: $e');
+      _gameState = _gameState?.copyWith(status: GameStatus.paused);
+      _safelyDisposeTimer(timer);
+    }
   }
 
   void _togglePause() {
+    if (_gameState == null) return;
+    SoundService.playButtonTapSound();
     setState(() {
-      _gameState = _gameState.copyWith(
-        status: _gameState.isPaused ? GameStatus.playing : GameStatus.paused,
+      _gameState = _gameState!.copyWith(
+        status: _gameState!.isPaused ? GameStatus.playing : GameStatus.paused,
       );
     });
   }
 
   void _goToTitle() {
-    _gameState.gameTimer?.cancel();
+    SoundService.playButtonTapSound();
+    _safelyDisposeTimer(_gameState?.gameTimer);
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => const TitleScreen(),
@@ -84,44 +129,108 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   void _restartGame() {
-    _gameState.gameTimer?.cancel();
-    setState(() {
-      _initializeGame();
-    });
+    SoundService.playButtonTapSound();
+    _safelyDisposeTimer(_gameState?.gameTimer);
+    _initializeGameAsync();
   }
 
   void _fireBullet() {
+    if (_gameState == null) return;
     setState(() {
-      GameEngine.fireBullet(_gameState);
+      if (GameEngine.canFireBullet(_gameState!)) {
+        SoundService.playShootSound();
+      }
+      GameEngine.fireBullet(_gameState!);
     });
   }
 
   void _movePlayer(double delta) {
+    if (_gameState == null) return;
     setState(() {
       if (delta < 0) {
-        _gameState.player.moveLeft();
+        _gameState!.player.moveLeft();
       } else {
-        _gameState.player.moveRight();
+        _gameState!.player.moveRight();
       }
     });
   }
 
+  void _safelyDisposeTimer(Timer? timer) {
+    try {
+      timer?.cancel();
+    } catch (e) {
+      debugPrint('Timer disposal error: $e');
+    }
+  }
+
+  void _saveHighScoreIfNeeded() async {
+    if (_gameState == null) return;
+    final isNewRecord = await HighScoreService.saveHighScore(_gameState!.score);
+    if (isNewRecord) {
+      SoundService.playNewHighScoreSound();
+      setState(() {
+        _gameState = _gameState!.copyWith(highScore: _gameState!.score);
+      });
+    }
+  }
+
   @override
   void dispose() {
-    _gameState.gameTimer?.cancel();
+    _safelyDisposeTimer(_gameState?.gameTimer);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final gameState = _gameState;
+    if (gameState == null) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    
     return Scaffold(
       appBar: AppBar(
-        title: Text('Space Invader - Score: ${_gameState.score}'),
-        backgroundColor: Colors.grey[900],
+        backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        elevation: 0,
+        title: Row(
+          children: [
+            // スコア表示
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Score: ${gameState.score}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    'High: ${gameState.highScore}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // HPバー
+            HPDisplay(
+              currentHP: gameState.lives,
+              maxHP: GameConstants.playerLives,
+            ),
+          ],
+        ),
         actions: [
           PauseButton(
-            isPaused: _gameState.isPaused,
+            isPaused: gameState.isPaused,
             onPressed: _togglePause,
           ),
         ],
@@ -138,8 +247,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             children: [
               // プレイヤーの宇宙船
               Positioned(
-                left: _gameState.player.x,
-                bottom: GameConstants.gameHeight - _gameState.player.y - GameConstants.playerHeight,
+                left: gameState.player.x,
+                bottom: GameConstants.gameHeight - gameState.player.y - GameConstants.playerHeight,
                 child: Container(
                   width: GameConstants.playerWidth,
                   height: GameConstants.playerHeight,
@@ -155,8 +264,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 ),
               ),
               
-              // 弾丸
-              ..._gameState.bullets.map((bullet) => Positioned(
+              // プレイヤーの弾丸
+              ...gameState.bullets.map((bullet) => Positioned(
                 left: bullet.x,
                 bottom: GameConstants.gameHeight - bullet.y - GameConstants.bulletHeight,
                 child: Container(
@@ -166,8 +275,19 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 ),
               )),
               
+              // インベーダーの弾丸
+              ...gameState.invaderBullets.map((bullet) => Positioned(
+                left: bullet.x,
+                bottom: GameConstants.gameHeight - bullet.y - GameConstants.bulletHeight,
+                child: Container(
+                  width: GameConstants.bulletWidth,
+                  height: GameConstants.bulletHeight,
+                  color: Colors.red,
+                ),
+              )),
+              
               // インベーダー
-              ..._gameState.invaders.map((invader) => Positioned(
+              ...gameState.invaders.map((invader) => Positioned(
                 left: invader.x,
                 bottom: GameConstants.gameHeight - invader.y - GameConstants.invaderHeight,
                 child: Container(
@@ -186,7 +306,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               )),
               
               // ゲームオーバー画面
-              if (_gameState.isGameOver)
+              if (gameState.isGameOver)
                 Container(
                   width: GameConstants.gameWidth,
                   height: GameConstants.gameHeight,
@@ -195,21 +315,39 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text(
-                          'Game Clear!',
-                          style: TextStyle(
+                        Text(
+                          gameState.lives <= 0 ? 'Game Over!' : 'Game Clear!',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                        const SizedBox(height: 10),
                         Text(
-                          'Final Score: ${_gameState.score}',
+                          'Final Score: ${gameState.score}',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 20,
                           ),
                         ),
+                        Text(
+                          'High Score: ${gameState.highScore}',
+                          style: TextStyle(
+                            color: gameState.score >= gameState.highScore ? Colors.yellow : Colors.white,
+                            fontSize: 18,
+                            fontWeight: gameState.score >= gameState.highScore ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        if (gameState.score >= gameState.highScore && gameState.score > 0)
+                          const Text(
+                            '🎉 NEW RECORD! 🎉',
+                            style: TextStyle(
+                              color: Colors.yellow,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         const SizedBox(height: 20),
                         ElevatedButton(
                           onPressed: _restartGame,
@@ -221,7 +359,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 ),
 
               // ポーズメニュー
-              if (_gameState.isPaused && !_gameState.isGameOver)
+              if (gameState.isPaused && !gameState.isGameOver)
                 PauseMenu(
                   onResume: _togglePause,
                   onRestart: _restartGame,

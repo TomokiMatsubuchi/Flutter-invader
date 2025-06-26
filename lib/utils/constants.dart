@@ -12,9 +12,11 @@ class GameConstants {
   // ゲームバランス
   static const int maxBullets = 3;
   static const int scorePerInvader = 10;
+  static const int playerLives = 3;
   static const double playerSpeed = 20.0;
   static const double bulletSpeed = 5.0;
   static const double invaderSpeed = 20.0;
+  static const double invaderBulletSpeed = 3.0;
   
   // プレイヤー設定
   static const double playerWidth = 40.0;

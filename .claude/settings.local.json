@@ -5,8 +5,22 @@
       "Bash(flutter create:*)",
       "Bash(flutter run:*)",
       "Bash(flutter:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(find:*)"
     ],
-    "deny": []
+    "deny": [
+      "Bash(rm:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(git:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(sudo:*)",
+      "Bash(apt:*)",
+      "Bash(brew:*)",
+      "Bash(pip:*)",
+      "Bash(npm:*)"
+    ]
   }
 }
