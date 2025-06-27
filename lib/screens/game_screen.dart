@@ -9,6 +9,7 @@ import '../widgets/pause_button.dart';
 import '../widgets/pause_menu.dart';
 import '../widgets/hp_bar.dart';
 import '../widgets/pixel_button.dart';
+import '../painters/pixel_painters.dart';
 import 'title_screen.dart';
 
 class GameScreen extends StatefulWidget {
@@ -248,23 +249,59 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         elevation: 0,
         title: Row(
           children: [
-            // スコア表示
+            // ステージ名
             Expanded(
+              flex: 2,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
+                    'STAGE: VOID HUNTER',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.red,
+                      fontFamily: 'monospace',
+                      letterSpacing: 1,
+                      shadows: [
+                        Shadow(
+                          color: Colors.red.withOpacity(0.5),
+                          offset: const Offset(1, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    'THREAT LEVEL: EXTREME',
+                    style: const TextStyle(
+                      fontSize: 8,
+                      color: Colors.orange,
+                      fontFamily: 'monospace',
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // スコア表示
+            Expanded(
+              flex: 1,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
                     'Score: ${gameState.score}',
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   Text(
                     'High: ${gameState.highScore}',
                     style: const TextStyle(
-                      fontSize: 12,
+                      fontSize: 10,
                       color: Colors.grey,
                     ),
                   ),
@@ -291,73 +328,57 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         onPanStart: _onPanStart,
         onPanUpdate: _onPanUpdate,
         onPanEnd: _onPanEnd,
-        child: Center(
-          child: Container(
-            width: GameConstants.gameWidth,
-            height: GameConstants.gameHeight,
-            decoration: BoxDecoration(
-              color: Colors.black,
-              border: Border.all(color: Colors.white, width: 2),
-            ),
-            child: Stack(
-              children: [
-                // プレイヤーの宇宙船
+        child: Column(
+          children: [
+            // ゲームエリア
+            Expanded(
+              child: Center(
+                child: Container(
+                  width: GameConstants.gameWidth,
+                  height: GameConstants.gameHeight,
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                  child: Stack(
+                    children: [
+                // プレイヤーの宇宙船（SF戦闘機）
               Positioned(
                 left: gameState.player.x,
                 bottom: GameConstants.gameHeight - gameState.player.y - GameConstants.playerHeight,
-                child: Container(
-                  width: GameConstants.playerWidth,
-                  height: GameConstants.playerHeight,
-                  decoration: const BoxDecoration(
-                    color: Colors.green,
-                    shape: BoxShape.rectangle,
-                  ),
-                  child: const Icon(
-                    Icons.rocket_launch,
-                    color: Colors.white,
-                    size: 30,
-                  ),
+                child: CustomPaint(
+                  painter: SFFighterPainter(),
+                  size: Size(GameConstants.playerWidth, GameConstants.playerHeight),
                 ),
               ),
               
-              // プレイヤーの弾丸
+              // プレイヤーの弾丸（プラズマ弾）
               ...gameState.bullets.map((bullet) => Positioned(
                 left: bullet.x,
                 bottom: GameConstants.gameHeight - bullet.y - GameConstants.bulletHeight,
-                child: Container(
-                  width: GameConstants.bulletWidth,
-                  height: GameConstants.bulletHeight,
-                  color: Colors.yellow,
+                child: CustomPaint(
+                  painter: PlasmaBulletPainter(),
+                  size: Size(GameConstants.bulletWidth, GameConstants.bulletHeight),
                 ),
               )),
               
-              // インベーダーの弾丸
+              // インベーダーの弾丸（エイリアン武器）
               ...gameState.invaderBullets.map((bullet) => Positioned(
                 left: bullet.x,
                 bottom: GameConstants.gameHeight - bullet.y - GameConstants.bulletHeight,
-                child: Container(
-                  width: GameConstants.bulletWidth,
-                  height: GameConstants.bulletHeight,
-                  color: Colors.red,
+                child: CustomPaint(
+                  painter: AlienBulletPainter(),
+                  size: Size(GameConstants.bulletWidth, GameConstants.bulletHeight),
                 ),
               )),
               
-              // インベーダー
+              // インベーダー（エイリアン侵略機）
               ...gameState.invaders.map((invader) => Positioned(
                 left: invader.x,
                 bottom: GameConstants.gameHeight - invader.y - GameConstants.invaderHeight,
-                child: Container(
-                  width: GameConstants.invaderWidth,
-                  height: GameConstants.invaderHeight,
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.rectangle,
-                  ),
-                  child: const Icon(
-                    Icons.smart_toy,
-                    color: Colors.white,
-                    size: 20,
-                  ),
+                child: CustomPaint(
+                  painter: AlienInvaderPainter(),
+                  size: Size(GameConstants.invaderWidth, GameConstants.invaderHeight),
                 ),
               )),
               
@@ -440,9 +461,68 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   onRestart: _restartGame,
                   onGoToTitle: _goToTitle,
                 ),
-              ],
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
+            // フッターエリア
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.black,
+                border: Border(
+                  top: BorderSide(color: Colors.cyan, width: 2),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    // 戦闘機アイコン
+                    CustomPaint(
+                      painter: SFFighterPainter(),
+                      size: const Size(40, 40),
+                    ),
+                    const SizedBox(width: 12),
+                    // 戦闘機情報
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'NEXUS-7 FIGHTER',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.cyan,
+                            fontFamily: 'monospace',
+                            letterSpacing: 1.5,
+                            shadows: [
+                              Shadow(
+                                color: Colors.cyan.withOpacity(0.5),
+                                offset: const Offset(1, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'PLASMA CANNON SYSTEM',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            fontFamily: 'monospace',
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
