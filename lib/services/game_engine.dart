@@ -10,16 +10,41 @@ class GameEngine {
   static void initializeInvaders(GameState gameState) {
     try {
       gameState.invaders.clear();
-      for (int row = 0; row < GameConstants.invaderRows; row++) {
-        for (int col = 0; col < GameConstants.invaderCols; col++) {
-          gameState.invaders.add(Invader(
-            x: GameConstants.invaderStartX + col * GameConstants.invaderSpacing,
-            y: GameConstants.invaderStartY + row * GameConstants.invaderSpacing,
-          ));
-        }
-      }
+      // 初期化時はインベーダーを配置しない（ランダム出現システムに任せる）
     } catch (e) {
       debugPrint('Error initializing invaders: $e');
+    }
+  }
+  
+  static void spawnRandomInvader(GameState gameState) {
+    try {
+      // 一定確率でインベーダーを生成
+      if (Random().nextInt(100) < 2) { // 2%の確率に増加（HPが増えたため）
+        final spawnSide = Random().nextInt(3); // 0:上, 1:右, 2:左（下は除外）
+        double x, y;
+        
+        switch (spawnSide) {
+          case 0: // 上から
+            x = Random().nextDouble() * (GameConstants.gameWidth - GameConstants.invaderWidth);
+            y = -GameConstants.invaderHeight;
+            break;
+          case 1: // 右から
+            x = GameConstants.gameWidth;
+            y = Random().nextDouble() * (GameConstants.gameHeight - GameConstants.invaderHeight);
+            break;
+          case 2: // 左から
+            x = -GameConstants.invaderWidth;
+            y = Random().nextDouble() * (GameConstants.gameHeight - GameConstants.invaderHeight);
+            break;
+          default:
+            x = Random().nextDouble() * (GameConstants.gameWidth - GameConstants.invaderWidth);
+            y = -GameConstants.invaderHeight;
+        }
+        
+        gameState.invaders.add(Invader(x: x, y: y));
+      }
+    } catch (e) {
+      debugPrint('Error spawning random invader: $e');
     }
   }
   
@@ -37,37 +62,42 @@ class GameEngine {
   static bool updateInvaders(GameState gameState) {
     if (gameState.invaders.isEmpty) return false;
     
-    final newCounter = gameState.moveCounter + 1;
-    bool directionChanged = false;
+    // フレームカウンターで移動頻度を調整
+    final shouldMove = gameState.moveCounter % 3 == 0; // 3フレームに1回移動
     
-    if (newCounter % GameConstants.invaderMoveInterval == 0) {
-      bool hitEdge = false;
-      
-      if (gameState.moveRight) {
-        for (var invader in gameState.invaders) {
-          invader.x += GameConstants.invaderSpeed;
-          if (invader.x >= GameConstants.gameWidth - GameConstants.invaderWidth) {
-            hitEdge = true;
-          }
-        }
-      } else {
-        for (var invader in gameState.invaders) {
-          invader.x -= GameConstants.invaderSpeed;
-          if (invader.x <= 0) {
-            hitEdge = true;
-          }
+    // インベーダーをプレイヤーに向かって移動させる
+    gameState.invaders.removeWhere((invader) {
+      if (shouldMove) {
+        final playerCenterX = gameState.player.x + GameConstants.playerWidth / 2;
+        final playerCenterY = gameState.player.y + GameConstants.playerHeight / 2;
+        final invaderCenterX = invader.x + GameConstants.invaderWidth / 2;
+        final invaderCenterY = invader.y + GameConstants.invaderHeight / 2;
+        
+        // プレイヤーとの距離を計算
+        final dx = playerCenterX - invaderCenterX;
+        final dy = playerCenterY - invaderCenterY;
+        final distance = sqrt(dx * dx + dy * dy);
+        
+        // 一定距離以上離れている場合のみ移動
+        if (distance > 5.0) {
+          // 正規化した方向ベクトルを計算
+          final normalizedDx = dx / distance;
+          final normalizedDy = dy / distance;
+          
+          // インベーダーをプレイヤーに向かって滑らかに移動
+          invader.x += normalizedDx * GameConstants.invaderSpeed;
+          invader.y += normalizedDy * GameConstants.invaderSpeed;
         }
       }
       
-      if (hitEdge) {
-        directionChanged = true;
-        for (var invader in gameState.invaders) {
-          invader.y += GameConstants.invaderSpeed;
-        }
-      }
-    }
+      // 画面外に出たインベーダーを削除
+      return invader.x < -GameConstants.invaderWidth || 
+             invader.x > GameConstants.gameWidth || 
+             invader.y < -GameConstants.invaderHeight || 
+             invader.y > GameConstants.gameHeight;
+    });
     
-    return directionChanged;
+    return false; // 方向変更は不要
   }
   
   static int checkCollisions(GameState gameState) {
@@ -125,7 +155,7 @@ class GameEngine {
 
   static void generateInvaderBullet(GameState gameState) {
     try {
-      if (gameState.invaders.isNotEmpty && Random().nextInt(100) < 2) {
+      if (gameState.invaders.isNotEmpty && Random().nextInt(100) < 3) { // 3%に増加
         final randomInvader = gameState.invaders[Random().nextInt(gameState.invaders.length)];
         gameState.invaderBullets.add(InvaderBullet(
           x: randomInvader.x + GameConstants.invaderWidth / 2,
@@ -139,6 +169,7 @@ class GameEngine {
 
   static bool checkPlayerCollision(GameState gameState) {
     try {
+      // インベーダーの弾丸との衝突判定
       for (int i = gameState.invaderBullets.length - 1; i >= 0; i--) {
         final bullet = gameState.invaderBullets[i];
         if (bullet.x >= gameState.player.x &&
@@ -149,6 +180,18 @@ class GameEngine {
           return true;
         }
       }
+      
+      // インベーダーとの直接接触判定
+      for (int i = gameState.invaders.length - 1; i >= 0; i--) {
+        final invader = gameState.invaders[i];
+        if (invader.x < gameState.player.x + GameConstants.playerWidth &&
+            invader.x + GameConstants.invaderWidth > gameState.player.x &&
+            invader.y < gameState.player.y + GameConstants.playerHeight &&
+            invader.y + GameConstants.invaderHeight > gameState.player.y) {
+          gameState.invaders.removeAt(i);
+          return true;
+        }
+      }
     } catch (e) {
       debugPrint('Error checking player collision: $e');
     }
@@ -156,7 +199,7 @@ class GameEngine {
   }
 
   static bool isGameOver(GameState gameState) {
-    return gameState.invaders.isEmpty || gameState.lives <= 0;
+    return gameState.lives <= 0; // インベーダーは無限出現するため、ライフのみでゲームオーバー判定
   }
 
   static bool isPlayerDead(GameState gameState) {

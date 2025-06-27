@@ -298,12 +298,22 @@ class _TitleScreenState extends State<TitleScreen> with TickerProviderStateMixin
                           ),
                         ),
                         const SizedBox(height: 15),
-                        const Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        const Column(
                           children: [
-                            Flexible(child: PixelControlInfo(symbol: '◀', label: 'LEFT')),
-                            Flexible(child: PixelControlInfo(symbol: '●', label: 'FIRE')),
-                            Flexible(child: PixelControlInfo(symbol: '▶', label: 'RIGHT')),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                Flexible(child: PixelControlInfo(symbol: '◉', label: 'NEURAL LINK')),
+                                Flexible(child: PixelControlInfo(symbol: '⟼', label: 'VECTOR CTRL')),
+                              ],
+                            ),
+                            SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Flexible(child: PixelControlInfo(symbol: '◈', label: 'QUANTUM FIRE')),
+                              ],
+                            ),
                           ],
                         ),
                       ],

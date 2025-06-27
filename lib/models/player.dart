@@ -22,6 +22,18 @@ class Player {
     }
   }
   
+  void moveUp() {
+    y -= GameConstants.playerSpeed;
+    if (y < 0) y = 0;
+  }
+  
+  void moveDown() {
+    y += GameConstants.playerSpeed;
+    if (y > GameConstants.gameHeight - GameConstants.playerHeight) {
+      y = GameConstants.gameHeight - GameConstants.playerHeight;
+    }
+  }
+  
   Player copyWith({double? x, double? y}) {
     return Player(
       x: x ?? this.x,

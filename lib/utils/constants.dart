@@ -11,17 +11,17 @@ class GameConstants {
   
   // ゲームバランス
   static const int maxBullets = 3;
-  static const int scorePerInvader = 10;
-  static const int playerLives = 3;
+  static const int scorePerInvader = 50; // スコアを増加
+  static const int playerLives = 30;
   static const double playerSpeed = 20.0;
   static const double bulletSpeed = 5.0;
-  static const double invaderSpeed = 20.0;
+  static const double invaderSpeed = 5.0; // 速度を大幅に減少
   static const double invaderBulletSpeed = 3.0;
   
   // プレイヤー設定
   static const double playerWidth = 40.0;
   static const double playerHeight = 40.0;
-  static const double playerY = gameHeight - 80;
+  static const double playerY = gameHeight * 0.7; // 画面の70%の位置（下寄りだが移動可能）
   
   // インベーダー設定
   static const int invaderRows = 5;

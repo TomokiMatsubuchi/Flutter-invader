@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../models/game_state.dart';
-import '../models/bullet.dart';
-import '../models/invader.dart';
-import '../models/invader_bullet.dart';
-import '../models/player.dart';
 import '../services/game_engine.dart';
 import '../services/high_score_service.dart';
 import '../services/sound_service.dart';
@@ -12,6 +8,7 @@ import '../utils/constants.dart';
 import '../widgets/pause_button.dart';
 import '../widgets/pause_menu.dart';
 import '../widgets/hp_bar.dart';
+import '../widgets/pixel_button.dart';
 import 'title_screen.dart';
 
 class GameScreen extends StatefulWidget {
@@ -61,6 +58,15 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         GameEngine.updateBullets(gameState);
         GameEngine.updateInvaderBullets(gameState);
         GameEngine.generateInvaderBullet(gameState);
+        GameEngine.spawnRandomInvader(gameState); // ランダム出現
+        
+        // 自動射撃（一定間隔で発射）
+        if (gameState.moveCounter % 20 == 0) { // 20フレームに1回（約0.33秒間隔）
+          if (GameEngine.canFireBullet(gameState)) {
+            SoundService.playShootSound();
+            GameEngine.fireBullet(gameState);
+          }
+        }
         
         final directionChanged = GameEngine.updateInvaders(gameState);
         final hitCount = GameEngine.checkCollisions(gameState);
@@ -134,26 +140,70 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     _initializeGameAsync();
   }
 
-  void _fireBullet() {
-    if (_gameState == null) return;
+
+
+  void _updatePlayerPosition(Offset globalPosition) {
+    if (_gameState == null || _gameState!.isPaused || _gameState!.isGameOver) return;
+    
+    // 画面サイズを取得
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+    
+    // AppBarの高さを除外
+    final appBarHeight = AppBar().preferredSize.height + MediaQuery.of(context).padding.top;
+    final availableHeight = screenHeight - appBarHeight;
+    
+    // タッチ位置を0-1の比率に変換（画面全体を使用、端での反応を改善）
+    final touchRatioX = (globalPosition.dx / screenWidth).clamp(0.0, 1.0);
+    final touchRatioY = ((globalPosition.dy - appBarHeight) / availableHeight).clamp(0.0, 1.0);
+    
+    // 端での反応を改善するため、より敏感なマッピング
+    final adjustedRatioX = touchRatioX;
+    final adjustedRatioY = touchRatioY;
+    
     setState(() {
-      if (GameEngine.canFireBullet(_gameState!)) {
-        SoundService.playShootSound();
-      }
-      GameEngine.fireBullet(_gameState!);
+      // 比率をゲーム座標に変換（調整された比率を使用）
+      final gameX = adjustedRatioX * GameConstants.gameWidth;
+      final gameY = adjustedRatioY * GameConstants.gameHeight;
+      
+      // プレイヤー位置を更新（プレイヤーの中心がタッチ位置になるように）
+      final newX = gameX - GameConstants.playerWidth / 2;
+      final newY = gameY - GameConstants.playerHeight / 2;
+      
+      // 現在の位置を取得
+      final currentX = _gameState!.player.x;
+      final currentY = _gameState!.player.y;
+      
+      // 新しい位置を計算（境界でも確実に動作するように）
+      final clampedX = newX.clamp(0.0, GameConstants.gameWidth - GameConstants.playerWidth);
+      final clampedY = newY.clamp(0.0, GameConstants.gameHeight - GameConstants.playerHeight);
+      
+      // 常に強制的に更新（境界での固着を防ぐ）
+      _gameState!.player.x = clampedX;
+      _gameState!.player.y = clampedY;
+      
+      // デバッグ用：座標を確認
+      // print('Touch: (${globalPosition.dx}, ${globalPosition.dy}) -> Game: ($clampedX, $clampedY)');
     });
   }
 
-  void _movePlayer(double delta) {
-    if (_gameState == null) return;
-    setState(() {
-      if (delta < 0) {
-        _gameState!.player.moveLeft();
-      } else {
-        _gameState!.player.moveRight();
-      }
-    });
+  void _onPanStart(DragStartDetails details) {
+    _updatePlayerPosition(details.globalPosition);
   }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    _updatePlayerPosition(details.globalPosition);
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    // パン終了時は何もしない（プレイヤーは最後の位置に留まる）
+  }
+
+  void _onTap(TapDownDetails details) {
+    _updatePlayerPosition(details.globalPosition);
+  }
+
 
   void _safelyDisposeTimer(Timer? timer) {
     try {
@@ -231,21 +281,27 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         actions: [
           PauseButton(
             isPaused: gameState.isPaused,
+            isGameOver: gameState.isGameOver,
             onPressed: _togglePause,
           ),
         ],
       ),
-      body: Center(
-        child: Container(
-          width: GameConstants.gameWidth,
-          height: GameConstants.gameHeight,
-          decoration: BoxDecoration(
-            color: Colors.black,
-            border: Border.all(color: Colors.white, width: 2),
-          ),
-          child: Stack(
-            children: [
-              // プレイヤーの宇宙船
+      body: GestureDetector(
+        onTapDown: _onTap,
+        onPanStart: _onPanStart,
+        onPanUpdate: _onPanUpdate,
+        onPanEnd: _onPanEnd,
+        child: Center(
+          child: Container(
+            width: GameConstants.gameWidth,
+            height: GameConstants.gameHeight,
+            decoration: BoxDecoration(
+              color: Colors.black,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: Stack(
+              children: [
+                // プレイヤーの宇宙船
               Positioned(
                 left: gameState.player.x,
                 bottom: GameConstants.gameHeight - gameState.player.y - GameConstants.playerHeight,
@@ -349,9 +405,28 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                             ),
                           ),
                         const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: _restartGame,
-                          child: const Text('Play Again'),
+                        Column(
+                          children: [
+                            PixelButton(
+                              text: 'PLAY AGAIN',
+                              onPressed: _restartGame,
+                              backgroundColor: Colors.blue,
+                              borderColor: Colors.white,
+                              textColor: Colors.white,
+                              width: 200,
+                              height: 50,
+                            ),
+                            const SizedBox(height: 15),
+                            PixelButton(
+                              text: 'TITLE',
+                              onPressed: _goToTitle,
+                              backgroundColor: Colors.green,
+                              borderColor: Colors.white,
+                              textColor: Colors.white,
+                              width: 200,
+                              height: 50,
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -365,44 +440,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   onRestart: _restartGame,
                   onGoToTitle: _goToTitle,
                 ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
-      bottomNavigationBar: Container(
-        height: 80,
-        color: Colors.grey[900],
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            ElevatedButton(
-              onPressed: () => _movePlayer(-1),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                shape: const CircleBorder(),
-                padding: const EdgeInsets.all(20),
-              ),
-              child: const Icon(Icons.arrow_left, color: Colors.white),
-            ),
-            ElevatedButton(
-              onPressed: _fireBullet,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                shape: const CircleBorder(),
-                padding: const EdgeInsets.all(20),
-              ),
-              child: const Icon(Icons.radio_button_unchecked, color: Colors.white),
-            ),
-            ElevatedButton(
-              onPressed: () => _movePlayer(1),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                shape: const CircleBorder(),
-                padding: const EdgeInsets.all(20),
-              ),
-              child: const Icon(Icons.arrow_right, color: Colors.white),
-            ),
-          ],
         ),
       ),
     );
